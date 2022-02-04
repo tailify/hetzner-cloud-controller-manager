@@ -1,0 +1,21 @@
+apiVersion: skaffold/v2beta23
+kind: Config
+metadata:
+  name: hetzner-cloud-controller-manager
+build:
+  artifacts:
+    - image: ghcr.io/tailify/hetzner-cloud-controller-manager
+      context: .
+      docker:
+        dockerfile: Dockerfile.debug
+deploy:
+  kubectl:
+    defaultNamespace: kube-system
+    manifests:
+      - deploy/deploy-debug.yaml
+portForward:
+  - namespace: kube-system
+    resourceType: service
+    resourceName: hetzner-cloud-controller-manager
+    port: 40000
+

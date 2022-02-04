@@ -40,7 +40,7 @@ spec:
         - key: "node.kubernetes.io/not-ready"
           effect: "NoSchedule"
       containers:
-        - image: ghcr.io/identw/hetzner-cloud-controller-manager:v0.0.8
+        - image: ghcr.io/tailify/hetzner-cloud-controller-manager:v0.0.9
           name: hetzner-cloud-controller-manager
           command:
             - "/bin/hcloud-cloud-controller-manager"
@@ -77,7 +77,15 @@ spec:
                 secretKeyRef:
                   name: hetzner-cloud-controller-manager
                   key: robot_password
-  
+            - name: ANSIBLE_INVENTORY
+              value: /config/inventory/hosts
+          volumeMounts:
+            - mountPath: /config/inventory
+              name: inventory
+      volumes:
+        - name: inventory
+          configMap:
+            name: ansible-inventory
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -87,7 +95,7 @@ metadata:
 ---
 
 kind: ClusterRoleBinding
-apiVersion: rbac.authorization.k8s.io/v1beta1
+apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: system:hetzner-cloud-controller-manager
 roleRef:
@@ -98,47 +106,7 @@ subjects:
   - kind: ServiceAccount
     name: hetzner-cloud-controller-manager
     namespace: kube-system
-
 ---
-
-# psp
-apiVersion: policy/v1beta1
-kind: PodSecurityPolicy
-metadata:
-  name: hetzner-cloud-controller-manager
-spec:
-  hostIPC: false
-  hostPID: false
-  hostNetwork: false
-  privileged: false
-  readOnlyRootFilesystem: true
-  allowPrivilegeEscalation: false
-  runAsUser:
-    rule: MustRunAs
-    ranges:
-      - max: 40801
-        min: 40801
-  runAsGroup:
-    rule: MustRunAs
-    ranges:
-      - max: 40801
-        min: 40801
-  fsGroup:
-    rule: MustRunAs
-    ranges:
-      - max: 40801
-        min: 40801
-  seLinux:
-    rule: RunAsAny
-  supplementalGroups:
-    rule: MustRunAs
-    ranges:
-      - max: 40801
-        min: 40801
-  volumes:
-    - 'secret'
----
-
 # Cluster role for psp usage
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole

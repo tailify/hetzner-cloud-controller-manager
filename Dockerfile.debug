@@ -5,6 +5,7 @@ COPY ./go.mod .
 COPY ./go.sum .
 RUN go mod download
 ADD . .
+RUN CGO_ENABLED=0 go build -o dlv github.com/go-delve/delve/cmd/dlv
 RUN CGO_ENABLED=0 go build -o hcloud-cloud-controller-manager  .
 
 FROM alpine:3.12
@@ -13,6 +14,9 @@ USER root
 RUN mkdir -p /home
 WORKDIR /home
 
+COPY --from=builder /maschine-controller/src/dlv /bin/dlv
 COPY --from=builder /maschine-controller/src/hcloud-cloud-controller-manager /bin/hcloud-cloud-controller-manager
+
+RUN chmod +x /bin/dlv && chmod +x /bin/hcloud-cloud-controller-manager
 
 ENTRYPOINT ["/bin/bash", "-c"]

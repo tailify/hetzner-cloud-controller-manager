@@ -5,7 +5,7 @@ metadata:
   name: hetzner-cloud-controller-manager
   namespace: kube-system
 spec:
-  replicas: 3
+  replicas: 1
   revisionHistoryLimit: 3
   selector:
     matchLabels:
@@ -42,22 +42,23 @@ spec:
       containers:
         - image: ghcr.io/tailify/hetzner-cloud-controller-manager:v0.0.9
           name: hetzner-cloud-controller-manager
+#          command:
+#            - "/bin/hcloud-cloud-controller-manager"
+#            - "--cloud-provider=hetzner"
+#            - "--leader-elect=true"
+#            - "--allow-untagged-cloud"
           command:
+            - "/bin/dlv"
+            - "exec"
             - "/bin/hcloud-cloud-controller-manager"
+            - "--listen=:40000"
+            - "--headless=true"
+            - "--api-version=2"
+            - "--accept-multiclient"
+            - "--"
             - "--cloud-provider=hetzner"
-            - "--leader-elect=true"
+            - "--leader-elect=false"
             - "--allow-untagged-cloud"
-            - "--cloud-config=/config/cloud_config"
-          resources:
-            requests:
-              cpu: 100m
-              memory: 50Mi
-            limits:
-              cpu: 200m
-              memory: 100Mi
-          securityContext:
-            runAsUser: 40801
-            runAsGroup: 40801
           env:
             - name: NODE_NAME
               valueFrom:
@@ -66,26 +67,44 @@ spec:
             - name: HCLOUD_TOKEN
               valueFrom:
                 secretKeyRef:
-                  name: hetzner-cloud-controller-manager
+                  name: hetzner-credentials
                   key: token
             - name: HROBOT_USER
               valueFrom:
                 secretKeyRef:
-                  name: hetzner-cloud-controller-manager
+                  name: hetzner-credentials
                   key: robot_user
             - name: HROBOT_PASS
               valueFrom:
                 secretKeyRef:
-                  name: hetzner-cloud-controller-manager
+                  name: hetzner-credentials
                   key: robot_password
+            - name: ANSIBLE_INVENTORY
+              value: /config/inventory/hosts
+          ports:
+            - name: debug
+              containerPort: 40000
           volumeMounts:
-            - mountPath: /config
-              name: config
+            - mountPath: /config/inventory
+              name: inventory
       volumes:
-        - name: config
-          secret:
-            secretName: hetzner-cloud-controller-manager
-          
+        - name: inventory
+          configMap:
+            name: ansible-inventory
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hetzner-cloud-controller-manager
+  namespace: kube-system
+spec:
+  selector:
+    app: hetzner-cloud-controller-manager
+  type: ClusterIP
+  ports:
+    - name: debug
+      port: 40000
+      targetPort: 40000
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -106,47 +125,7 @@ subjects:
   - kind: ServiceAccount
     name: hetzner-cloud-controller-manager
     namespace: kube-system
-
 ---
-
-# psp
-apiVersion: policy/v1beta1
-kind: PodSecurityPolicy
-metadata:
-  name: hetzner-cloud-controller-manager
-spec:
-  hostIPC: false
-  hostPID: false
-  hostNetwork: false
-  privileged: false
-  readOnlyRootFilesystem: true
-  allowPrivilegeEscalation: false
-  runAsUser:
-    rule: MustRunAs
-    ranges:
-      - max: 40801
-        min: 40801
-  runAsGroup:
-    rule: MustRunAs
-    ranges:
-      - max: 40801
-        min: 40801
-  fsGroup:
-    rule: MustRunAs
-    ranges:
-      - max: 40801
-        min: 40801
-  seLinux:
-    rule: RunAsAny
-  supplementalGroups:
-    rule: MustRunAs
-    ranges:
-      - max: 40801
-        min: 40801
-  volumes:
-    - 'secret'
----
-
 # Cluster role for psp usage
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole

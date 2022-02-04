@@ -31,6 +31,7 @@ import (
 	"github.com/hetznercloud/hcloud-go/hcloud"
 	"github.com/identw/hetzner-cloud-controller-manager/internal/hcops"
 	hrobot "github.com/nl2go/hrobot-go"
+	inventory "github.com/relex/aini"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	cloudprovider "k8s.io/cloud-provider"
@@ -43,6 +44,8 @@ const (
 	hcloudTokenENVVar                        = "HCLOUD_TOKEN"
 	hcloudEndpointENVVar                     = "HCLOUD_ENDPOINT"
 	hcloudNetworkENVVar                      = "HCLOUD_NETWORK"
+	ansibleInventoryENVVar                   = "ANSIBLE_INVENTORY"
+	ansibleInventoryVarsENVVar               = "ANSIBLE_INVENTORY_VARS"
 	nodeNameENVVar                           = "NODE_NAME"
 	providerNameENVVar                       = "PROVIDER_NAME"
 	nameLabelTypeENVVar                      = "NAME_LABEL_TYPE"
@@ -63,9 +66,11 @@ var (
 )
 
 type commonClient struct {
-	Hrobot    hrobot.RobotClient
-	Hcloud    *hcloud.Client
-	K8sClient *kubernetes.Clientset
+	Hrobot        hrobot.RobotClient
+	Hcloud        *hcloud.Client
+	K8sClient     *kubernetes.Clientset
+	Inventory     *inventory.InventoryData
+	InventoryVars []string
 }
 
 type cloud struct {
@@ -118,6 +123,10 @@ func readHrobotServers(hrobot hrobot.RobotClient) {
 			time.Sleep(time.Duration(hrobotPeriod) * time.Second)
 		}
 	}()
+}
+
+func readAnsibleInventory(filepath string) (*inventory.InventoryData, error) {
+	return inventory.ParseFile(filepath)
 }
 
 var (
@@ -197,6 +206,26 @@ func newCloud(configFile io.Reader) (cloudprovider.Interface, error) {
 
 	var client commonClient
 	client.Hcloud = hcloud.NewClient(opts...)
+
+	// Hetzner HRobot does not have enough data if K8S nodes use internal IPs on vSwitch
+	// Need to read the inventory file here
+	inventoryFile := os.Getenv(ansibleInventoryENVVar)
+	if inventoryFile != "" {
+		fmt.Printf("Loading Ansible inventory from %s", inventoryFile)
+		inventory, err := readAnsibleInventory(inventoryFile)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read ansible inventory from %s", inventoryFile)
+		}
+		client.Inventory = inventory
+	}
+
+	inventoryVars := os.Getenv(ansibleInventoryVarsENVVar)
+	if inventoryVars != "" {
+		client.InventoryVars = strings.Split(strings.TrimSpace(inventoryVars), ",")
+	} else {
+		client.InventoryVars = []string{"internal_ipv4", "internal_ipv6"}
+	}
+
 	client.Hrobot = hrobot.NewBasicAuthClient(user, pass)
 	readHrobotServers(client.Hrobot)
 

@@ -209,6 +209,24 @@ func (i instances) InstanceShutdown(ctx context.Context, node *v1.Node) (isOff b
 	return
 }
 
+func (i *instances) findInventoryAddresses(ctx context.Context, name string) []v1.NodeAddress {
+	inventory := i.client.Inventory
+	var addresses []v1.NodeAddress
+	host, ok := inventory.Hosts[name]
+	if ok {
+		for _, varName := range i.client.InventoryVars {
+			addr, ok := host.Vars[varName]
+			if ok {
+				addresses = append(
+					addresses,
+					v1.NodeAddress{Type: v1.NodeInternalIP, Address: addr},
+				)
+			}
+		}
+	}
+	return addresses
+}
+
 func (i *instances) nodeAddresses(ctx context.Context, server *hcloud.Server) ([]v1.NodeAddress, error) {
 	var addresses []v1.NodeAddress
 	addresses = append(
@@ -230,6 +248,13 @@ func (i *instances) nodeAddresses(ctx context.Context, server *hcloud.Server) ([
 			}
 
 		}
+	}
+
+	// Lookup Ansible inventory for private IP addresses
+	inventory := i.client.Inventory
+	if inventory != nil {
+		privateAddrs := i.findInventoryAddresses(ctx, server.Name)
+		addresses = append(addresses, privateAddrs...)
 	}
 	return addresses, nil
 }
